@@ -3,11 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<<<<<<< codex/explain-repository-and-suggest-features
     <title>FX Markup Simulator</title>
-=======
-    <title>Agentic Settlement Engine</title>
->>>>>>> main
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -42,21 +38,15 @@
         margin-top: 0.2rem;
       }
       input,
-<<<<<<< codex/explain-repository-and-suggest-features
       select,
-=======
->>>>>>> main
       button {
         margin-top: 0.35rem;
         padding: 0.45rem;
         font-size: 1rem;
       }
-<<<<<<< codex/explain-repository-and-suggest-features
       input[readonly] {
         background: #f6f6f6;
       }
-=======
->>>>>>> main
       button {
         cursor: pointer;
       }
@@ -89,14 +79,10 @@
       }
     </style>
   </head>
+
   <body>
-<<<<<<< codex/explain-repository-and-suggest-features
     <h1>FX Markup Simulator</h1>
     <p class="muted">Simple FX markup calculator with explicit formulas and automatic rate lookup.</p>
-=======
-    <h1>Agentic Settlement Engine</h1>
-    <p class="muted">Simple settlement calculator with explicit formulas for finance and engineering review.</p>
->>>>>>> main
 
     <div class="card">
       <div class="grid">
@@ -108,34 +94,21 @@
 
         <label>
           Transaction currency
-<<<<<<< codex/explain-repository-and-suggest-features
           <select id="txnCurrency"></select>
-=======
-          <input id="txnCurrency" type="text" value="USD" maxlength="3" />
->>>>>>> main
         </label>
 
         <label>
           Settlement currency
-<<<<<<< codex/explain-repository-and-suggest-features
           <select id="settlementCurrency"></select>
-=======
-          <input id="settlementCurrency" type="text" value="EUR" maxlength="3" />
->>>>>>> main
         </label>
 
         <label>
           FX rate (BaseRate)
-<<<<<<< codex/explain-repository-and-suggest-features
           <input id="fxRate" type="number" readonly />
           <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
           <span id="fxSourceNote" class="formula-note">Source: -</span>
           <span id="fxAsOfNote" class="formula-note">As-of: -</span>
           <span id="fxDerivationNote" class="formula-note">Rate derivation: -</span>
-=======
-          <input id="fxRate" type="number" min="0" step="0.0001" value="0.92" />
-          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
->>>>>>> main
         </label>
 
         <label>
@@ -162,21 +135,15 @@
       const settlementCurrencyEl = document.getElementById('settlementCurrency');
       const fxRateEl = document.getElementById('fxRate');
       const fxMarkupEl = document.getElementById('fxMarkup');
-<<<<<<< codex/explain-repository-and-suggest-features
       const fxSourceNoteEl = document.getElementById('fxSourceNote');
       const fxAsOfNoteEl = document.getElementById('fxAsOfNote');
       const fxDerivationNoteEl = document.getElementById('fxDerivationNote');
-=======
->>>>>>> main
       const runButton = document.getElementById('runButton');
       const results = document.getElementById('results');
       const errorMessage = document.getElementById('errorMessage');
 
-<<<<<<< codex/explain-repository-and-suggest-features
       let fxData = null;
 
-=======
->>>>>>> main
       function toMoney(value, currency) {
         return new Intl.NumberFormat('en-US', {
           style: 'currency',
@@ -186,25 +153,28 @@
         }).format(value);
       }
 
-<<<<<<< codex/explain-repository-and-suggest-features
+      /**
+       * Supports:
+       * a) Direct A->B if present
+       * b) Inversion if reverse present: 1/(B->A)
+       * c) EUR cross-rate: A->B = (EUR->B) / (EUR->A) when both exist under EUR base
+       */
       function getLookupResult(fromCurrency, toCurrency) {
         const rates = fxData?.rates || {};
         const eurRates = rates.EUR || {};
 
-        if (!fromCurrency || !toCurrency) {
-          return { error: 'Please select both currencies.' };
-        }
+        if (!fromCurrency || !toCurrency) return { error: 'Please select both currencies.' };
+        if (fromCurrency === toCurrency) return { rate: 1, note: 'Direct rate (same currency)' };
 
-        if (fromCurrency === toCurrency) {
-          return { rate: 1, note: 'Direct rate (same currency)' };
-        }
-
-        // a) Direct rate exists.
+        // a) Direct
         if (rates[fromCurrency] && rates[fromCurrency][toCurrency]) {
-          return { rate: Number(rates[fromCurrency][toCurrency]), note: `Direct rate: ${fromCurrency}→${toCurrency}` };
+          return {
+            rate: Number(rates[fromCurrency][toCurrency]),
+            note: `Direct rate: ${fromCurrency}→${toCurrency}`,
+          };
         }
 
-        // b) Reverse exists so derive by inversion.
+        // b) Invert
         if (rates[toCurrency] && rates[toCurrency][fromCurrency]) {
           const reverseRate = Number(rates[toCurrency][fromCurrency]);
           return {
@@ -213,17 +183,20 @@
           };
         }
 
-        // c) Cross-rate via EUR base: A→B = (EUR→B) / (EUR→A)
+        // c) EUR cross-rate: A->B = (EUR->B) / (EUR->A)
         if (eurRates[fromCurrency] && eurRates[toCurrency]) {
           const rate = Number(eurRates[toCurrency]) / Number(eurRates[fromCurrency]);
-          return {
-            rate,
-            note: 'Derived via EUR cross-rate',
-          };
+          return { rate, note: 'Derived via EUR cross-rate' };
         }
 
-        // d) Unresolvable.
         return { error: `No FX path found for ${fromCurrency}→${toCurrency}.` };
+      }
+
+      function setFxMetaUI() {
+        const src = fxData?.meta?.source ?? 'unavailable';
+        const asOf = fxData?.meta?.as_of ?? 'unavailable';
+        fxSourceNoteEl.textContent = `Source: ${src}`;
+        fxAsOfNoteEl.textContent = `As-of: ${asOf}`;
       }
 
       function updateFxRate() {
@@ -232,63 +205,67 @@
           return;
         }
 
+        setFxMetaUI();
+
         const from = txnCurrencyEl.value;
         const to = settlementCurrencyEl.value;
         const result = getLookupResult(from, to);
 
-        fxSourceNoteEl.textContent = `Source: ${fxData.meta.source}`;
-        fxAsOfNoteEl.textContent = `As-of: ${fxData.meta.as_of}`;
-
         if (result.error) {
           fxRateEl.value = '';
           fxDerivationNoteEl.textContent = `Rate derivation: ${result.error}`;
-          runButton.disabled = true;
           errorMessage.textContent = result.error;
+          runButton.disabled = true;
           return;
         }
 
         fxRateEl.value = result.rate.toFixed(6);
         fxDerivationNoteEl.textContent = `Rate derivation: ${result.note}`;
+        errorMessage.textContent = '';
         runButton.disabled = false;
-
-        if (errorMessage.textContent.startsWith('No FX path found')) {
-          errorMessage.textContent = '';
-        }
       }
 
       function populateCurrencyDropdowns() {
-        const currencies = Object.keys(fxData.rates.EUR).sort();
+        const eur = fxData?.rates?.EUR || {};
+        const currencies = Object.keys(eur).sort();
 
         txnCurrencyEl.innerHTML = '';
         settlementCurrencyEl.innerHTML = '';
 
-        for (const currency of currencies) {
-          const optionA = document.createElement('option');
-          optionA.value = currency;
-          optionA.textContent = currency;
-          txnCurrencyEl.appendChild(optionA);
+        for (const ccy of currencies) {
+          const optA = document.createElement('option');
+          optA.value = ccy;
+          optA.textContent = ccy;
+          txnCurrencyEl.appendChild(optA);
 
-          const optionB = document.createElement('option');
-          optionB.value = currency;
-          optionB.textContent = currency;
-          settlementCurrencyEl.appendChild(optionB);
+          const optB = document.createElement('option');
+          optB.value = ccy;
+          optB.textContent = ccy;
+          settlementCurrencyEl.appendChild(optB);
         }
 
-        txnCurrencyEl.value = currencies.includes('USD') ? 'USD' : currencies[0];
-        settlementCurrencyEl.value = currencies.includes('EUR') ? 'EUR' : currencies[0];
+        txnCurrencyEl.value = currencies.includes('USD') ? 'USD' : currencies[0] || 'EUR';
+        settlementCurrencyEl.value = currencies.includes('EUR') ? 'EUR' : currencies[0] || 'EUR';
       }
 
       async function initializeRates() {
         try {
-          const response = await fetch('fx_rates.json');
-          if (!response.ok) {
-            throw new Error('Failed to load fx_rates.json');
-          }
+          const response = await fetch('fx_rates.json', { cache: 'no-store' });
+          if (!response.ok) throw new Error('Failed to load fx_rates.json');
           fxData = await response.json();
+
+          // Defensive: ensure EUR exists and EUR->EUR exists
+          fxData.rates = fxData.rates || {};
+          fxData.rates.EUR = fxData.rates.EUR || {};
+          fxData.rates.EUR.EUR = 1;
+
           populateCurrencyDropdowns();
           updateFxRate();
-        } catch (error) {
-          errorMessage.textContent = 'Unable to load FX rates. Run scripts/update_fx_rates.py and refresh.';
+        } catch (err) {
+          fxData = null;
+          errorMessage.textContent =
+            'Unable to load FX rates (fx_rates.json). Please ensure it exists in the repo root and refresh.';
+          fxRateEl.value = '';
           fxSourceNoteEl.textContent = 'Source: unavailable';
           fxAsOfNoteEl.textContent = 'As-of: unavailable';
           fxDerivationNoteEl.textContent = 'Rate derivation: unavailable';
@@ -303,50 +280,29 @@
         const amount = Number(amountEl.value);
         const txnCurrency = txnCurrencyEl.value;
         const settlementCurrency = settlementCurrencyEl.value;
-=======
-      runButton.addEventListener('click', () => {
-        const amount = Number(amountEl.value);
-        const txnCurrency = txnCurrencyEl.value.toUpperCase();
-        const settlementCurrency = settlementCurrencyEl.value.toUpperCase();
->>>>>>> main
         const fxRate = Number(fxRateEl.value);
         const fxMarkupPct = Number(fxMarkupEl.value);
 
-        // Validation requirements:
-        // - Amount must be > 0
-        // - FX rate must be > 0
-        // - Markup % must be >= 0
         if (amount <= 0 || fxRate <= 0 || fxMarkupPct < 0) {
-          errorMessage.textContent = 'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
+          errorMessage.textContent =
+            'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
           return;
         }
-
         errorMessage.textContent = '';
 
-        // 1) Converted amount in settlement currency before markup.
-        // Formula: convertedAmount = TxAmt * BaseRate
         const convertedAmount = amount * fxRate;
-
-        // 2) FX margin retained by settlement provider.
-        // Formula: fxMargin = convertedAmount * (MarkupPct / 100)
         const fxMargin = convertedAmount * (fxMarkupPct / 100);
-
-        // 3) Merchant net payout after deducting FX margin.
-        // Formula: merchantNetPayout = convertedAmount - fxMargin
         const merchantNetPayout = convertedAmount - fxMargin;
 
         const decisionExplanation =
-<<<<<<< codex/explain-repository-and-suggest-features
           `FX conversion ${txnCurrency}→${settlementCurrency} used BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
-=======
-          `Settlement agent applied FX conversion using BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
->>>>>>> main
           `Resulting FX margin is ${toMoney(fxMargin, settlementCurrency)} and merchant receives net payout of ${toMoney(merchantNetPayout, settlementCurrency)}.`;
 
         results.innerHTML = `
           <p><strong>Merchant net payout:</strong> ${toMoney(merchantNetPayout, settlementCurrency)}</p>
           <p><strong>FX margin earned:</strong> ${toMoney(fxMargin, settlementCurrency)}</p>
           <p><strong>Decision explanation:</strong> ${decisionExplanation}</p>
+
           <h3>Calculation Breakdown</h3>
           <table aria-label="Calculation Breakdown">
             <thead>
@@ -364,11 +320,7 @@
               </tr>
               <tr>
                 <td>2) FX rate (BaseRate)</td>
-<<<<<<< codex/explain-repository-and-suggest-features
                 <td>Auto lookup by selected currencies</td>
-=======
-                <td>Input FX conversion rate</td>
->>>>>>> main
                 <td>${fxRate.toFixed(6)}</td>
               </tr>
               <tr>
@@ -395,11 +347,8 @@
           </table>
         `;
       });
-<<<<<<< codex/explain-repository-and-suggest-features
 
       initializeRates();
-=======
->>>>>>> main
     </script>
   </body>
 </html>
