@@ -8,7 +8,7 @@
       body {
         font-family: Arial, sans-serif;
         margin: 2rem;
-        max-width: 860px;
+        max-width: 760px;
         line-height: 1.4;
       }
       h1 {
@@ -22,22 +22,16 @@
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
         gap: 0.75rem;
       }
       label {
         display: flex;
         flex-direction: column;
-        font-size: 0.92rem;
-        font-weight: 600;
-      }
-      .formula-note {
-        font-size: 0.8rem;
-        color: #555;
-        font-weight: normal;
-        margin-top: 0.2rem;
+        font-size: 0.9rem;
       }
       input,
+      select,
       button {
         margin-top: 0.35rem;
         padding: 0.45rem;
@@ -46,45 +40,24 @@
       button {
         cursor: pointer;
       }
-      .muted {
-        color: #555;
-        font-size: 0.9rem;
-      }
-      .error {
-        margin-top: 0.75rem;
-        color: #b00020;
-        font-weight: 700;
-      }
       .results p {
         margin: 0.4rem 0;
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 0.75rem;
-      }
-      th,
-      td {
-        border: 1px solid #ddd;
-        padding: 0.55rem;
-        text-align: left;
-        vertical-align: top;
-      }
-      th {
-        background: #f8f8f8;
+      .muted {
+        color: #555;
+        font-size: 0.9rem;
       }
     </style>
   </head>
   <body>
     <h1>Agentic Settlement Engine</h1>
-    <p class="muted">Simple settlement calculator with explicit formulas for finance and engineering review.</p>
+    <p class="muted">A lightweight demo to simulate settlement outcomes.</p>
 
     <div class="card">
       <div class="grid">
         <label>
-          Transaction amount (TxAmt)
+          Transaction amount
           <input id="amount" type="number" min="0" step="0.01" value="1000" />
-          <span class="formula-note">Input amount in transaction currency.</span>
         </label>
 
         <label>
@@ -98,26 +71,42 @@
         </label>
 
         <label>
-          FX rate (BaseRate)
+          FX rate
           <input id="fxRate" type="number" min="0" step="0.0001" value="0.92" />
-          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
         </label>
 
         <label>
-          FX markup % (MarkupPct)
+          FX markup %
           <input id="fxMarkup" type="number" min="0" step="0.01" value="1.25" />
-          <span class="formula-note">FX margin = Converted amount × (MarkupPct / 100)</span>
+        </label>
+
+        <label>
+          Settlement speed
+          <select id="settlementSpeed">
+            <option value="T+1">T+1</option>
+            <option value="T+3">T+3</option>
+          </select>
+        </label>
+
+        <label>
+          Cross-border flag
+          <select id="crossBorder">
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
         </label>
       </div>
 
-      <button id="runButton" type="button" style="margin-top: 1rem">Run Settlement Agent</button>
-      <div id="errorMessage" class="error" aria-live="polite"></div>
+      <button id="runButton" type="button" style="margin-top: 1rem">
+        Run Settlement Agent
+      </button>
     </div>
 
     <div class="card results" id="results" aria-live="polite">
       <p><strong>Merchant net payout:</strong> -</p>
       <p><strong>FX margin earned:</strong> -</p>
-      <div id="breakdown"></div>
+      <p><strong>Settlement timing:</strong> -</p>
+      <p><strong>Decision explanation:</strong> -</p>
     </div>
 
     <script>
@@ -126,9 +115,10 @@
       const settlementCurrencyEl = document.getElementById('settlementCurrency');
       const fxRateEl = document.getElementById('fxRate');
       const fxMarkupEl = document.getElementById('fxMarkup');
+      const settlementSpeedEl = document.getElementById('settlementSpeed');
+      const crossBorderEl = document.getElementById('crossBorder');
       const runButton = document.getElementById('runButton');
       const results = document.getElementById('results');
-      const errorMessage = document.getElementById('errorMessage');
 
       function toMoney(value, currency) {
         return new Intl.NumberFormat('en-US', {
@@ -145,75 +135,40 @@
         const settlementCurrency = settlementCurrencyEl.value.toUpperCase();
         const fxRate = Number(fxRateEl.value);
         const fxMarkupPct = Number(fxMarkupEl.value);
+        const settlementSpeed = settlementSpeedEl.value;
+        const crossBorder = crossBorderEl.value;
 
-        // Validation requirements:
-        // - Amount must be > 0
-        // - FX rate must be > 0
-        // - Markup % must be >= 0
-        if (amount <= 0 || fxRate <= 0 || fxMarkupPct < 0) {
-          errorMessage.textContent = 'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
+        if (!amount || !fxRate || amount < 0 || fxRate < 0) {
+          alert('Please enter valid positive numeric values for amount and FX rate.');
           return;
         }
 
-        errorMessage.textContent = '';
+        // Base converted amount in settlement currency before markup.
+        // Formula: convertedBase = transactionAmount * fxRate
+        const convertedBase = amount * fxRate;
 
-        // 1) Converted amount in settlement currency before markup.
-        // Formula: convertedAmount = TxAmt * BaseRate
-        const convertedAmount = amount * fxRate;
+        // FX margin represents the provider's markup revenue in settlement currency.
+        // Formula: fxMargin = convertedBase * (fxMarkupPct / 100)
+        const fxMargin = convertedBase * (fxMarkupPct / 100);
 
-        // 2) FX margin retained by settlement provider.
-        // Formula: fxMargin = convertedAmount * (MarkupPct / 100)
-        const fxMargin = convertedAmount * (fxMarkupPct / 100);
+        // Merchant net payout is what the merchant receives after markup is retained.
+        // Formula: merchantNetPayout = convertedBase - fxMargin
+        const merchantNetPayout = convertedBase - fxMargin;
 
-        // 3) Merchant net payout after deducting FX margin.
-        // Formula: merchantNetPayout = convertedAmount - fxMargin
-        const merchantNetPayout = convertedAmount - fxMargin;
+        // Settlement timing is a direct reflection of selected settlement speed.
+        const settlementTiming =
+          settlementSpeed === 'T+1' ? 'Funds settle by next business day (T+1).' : 'Funds settle in three business days (T+3).';
+
+        const explanation =
+          crossBorder === 'yes'
+            ? `Cross-border flow detected: ${txnCurrency} converted to ${settlementCurrency} at ${fxRate}. A ${fxMarkupPct}% markup generated margin while preserving a net payout for the merchant.`
+            : `Domestic flow selected: settlement kept straightforward with ${settlementSpeed} timing and transparent FX markup application.`;
 
         results.innerHTML = `
           <p><strong>Merchant net payout:</strong> ${toMoney(merchantNetPayout, settlementCurrency)}</p>
           <p><strong>FX margin earned:</strong> ${toMoney(fxMargin, settlementCurrency)}</p>
-          <h3>Calculation Breakdown</h3>
-          <table aria-label="Calculation Breakdown">
-            <thead>
-              <tr>
-                <th>Step</th>
-                <th>Formula / Definition</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>1) Transaction amount (TxAmt)</td>
-                <td>Input transaction amount</td>
-                <td>${toMoney(amount, txnCurrency)}</td>
-              </tr>
-              <tr>
-                <td>2) FX rate (BaseRate)</td>
-                <td>Input FX conversion rate</td>
-                <td>${fxRate.toFixed(6)}</td>
-              </tr>
-              <tr>
-                <td>3) Converted amount</td>
-                <td>TxAmt × BaseRate</td>
-                <td>${toMoney(convertedAmount, settlementCurrency)}</td>
-              </tr>
-              <tr>
-                <td>4) FX markup % (MarkupPct)</td>
-                <td>Input markup percentage</td>
-                <td>${fxMarkupPct.toFixed(2)}%</td>
-              </tr>
-              <tr>
-                <td>5) FX margin</td>
-                <td>Converted amount × (MarkupPct / 100)</td>
-                <td>${toMoney(fxMargin, settlementCurrency)}</td>
-              </tr>
-              <tr>
-                <td>6) Merchant net payout</td>
-                <td>Converted amount - FX margin</td>
-                <td>${toMoney(merchantNetPayout, settlementCurrency)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <p><strong>Settlement timing:</strong> ${settlementTiming}</p>
+          <p><strong>Decision explanation:</strong> ${explanation}</p>
         `;
       });
     </script>
