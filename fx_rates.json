@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "source": "ECB Reference Rates",
+    "as_of": "2026-02-12"
+  },
+  "rates": {
+    "EUR": {
+      "EUR": 1,
+      "GBP": 0.8572,
+      "JPY": 169.74,
+      "USD": 1.0916
+    }
+  }
+}
