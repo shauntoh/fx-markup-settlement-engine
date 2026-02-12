@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FX Markup Simulator</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        max-width: 860px;
+        line-height: 1.4;
+      }
+      h1 {
+        margin-bottom: 0.5rem;
+      }
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 0.75rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.92rem;
+        font-weight: 600;
+      }
+      .formula-note {
+        font-size: 0.8rem;
+        color: #555;
+        font-weight: normal;
+        margin-top: 0.2rem;
+      }
+      input,
+      select,
+      button {
+        margin-top: 0.35rem;
+        padding: 0.45rem;
+        font-size: 1rem;
+      }
+      input[readonly] {
+        background: #f6f6f6;
+      }
+      button {
+        cursor: pointer;
+      }
+      .muted {
+        color: #555;
+        font-size: 0.9rem;
+      }
+      .error {
+        margin-top: 0.75rem;
+        color: #b00020;
+        font-weight: 700;
+      }
+      .results p {
+        margin: 0.4rem 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.75rem;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 0.55rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f8f8f8;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>FX Markup Simulator</h1>
+    <p class="muted">Simple FX markup calculator with explicit formulas and automatic rate lookup.</p>
+
+    <div class="card">
+      <div class="grid">
+        <label>
+          Transaction amount (TxAmt)
+          <input id="amount" type="number" min="0" step="0.01" value="1000" />
+          <span class="formula-note">Input amount in transaction currency.</span>
+        </label>
+
+        <label>
+          Transaction currency
+          <select id="txnCurrency"></select>
+        </label>
+
+        <label>
+          Settlement currency
+          <select id="settlementCurrency"></select>
+        </label>
+
+        <label>
+          FX rate (BaseRate)
+          <input id="fxRate" type="number" readonly />
+          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
+          <span id="fxSourceNote" class="formula-note">Source: -</span>
+          <span id="fxAsOfNote" class="formula-note">As-of: -</span>
+          <span id="fxDerivationNote" class="formula-note">Rate derivation: -</span>
+        </label>
+
+        <label>
+          FX markup % (MarkupPct)
+          <input id="fxMarkup" type="number" min="0" step="0.01" value="1.25" />
+          <span class="formula-note">FX margin = Converted amount × (MarkupPct / 100)</span>
+        </label>
+      </div>
+
+      <button id="runButton" type="button" style="margin-top: 1rem">Run Settlement Agent</button>
+      <div id="errorMessage" class="error" aria-live="polite"></div>
+    </div>
+
+    <div class="card results" id="results" aria-live="polite">
+      <p><strong>Merchant net payout:</strong> -</p>
+      <p><strong>FX margin earned:</strong> -</p>
+      <p><strong>Decision explanation:</strong> -</p>
+      <div id="breakdown"></div>
+    </div>
+
+    <script>
+      const amountEl = document.getElementById('amount');
+      const txnCurrencyEl = document.getElementById('txnCurrency');
+      const settlementCurrencyEl = document.getElementById('settlementCurrency');
+      const fxRateEl = document.getElementById('fxRate');
+      const fxMarkupEl = document.getElementById('fxMarkup');
+      const fxSourceNoteEl = document.getElementById('fxSourceNote');
+      const fxAsOfNoteEl = document.getElementById('fxAsOfNote');
+      const fxDerivationNoteEl = document.getElementById('fxDerivationNote');
+      const runButton = document.getElementById('runButton');
+      const results = document.getElementById('results');
+      const errorMessage = document.getElementById('errorMessage');
+
+      let fxData = null;
+
+      function toMoney(value, currency) {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(value);
+      }
+
+      function getLookupResult(fromCurrency, toCurrency) {
+        const rates = fxData?.rates || {};
+        const eurRates = rates.EUR || {};
+
+        if (!fromCurrency || !toCurrency) {
+          return { error: 'Please select both currencies.' };
+        }
+
+        if (fromCurrency === toCurrency) {
+          return { rate: 1, note: 'Direct rate (same currency)' };
+        }
+
+        // a) Direct rate exists.
+        if (rates[fromCurrency] && rates[fromCurrency][toCurrency]) {
+          return { rate: Number(rates[fromCurrency][toCurrency]), note: `Direct rate: ${fromCurrency}→${toCurrency}` };
+        }
+
+        // b) Reverse exists so derive by inversion.
+        if (rates[toCurrency] && rates[toCurrency][fromCurrency]) {
+          const reverseRate = Number(rates[toCurrency][fromCurrency]);
+          return {
+            rate: 1 / reverseRate,
+            note: `Derived via inversion from ${toCurrency}→${fromCurrency}`,
+          };
+        }
+
+        // c) Cross-rate via EUR base: A→B = (EUR→B) / (EUR→A)
+        if (eurRates[fromCurrency] && eurRates[toCurrency]) {
+          const rate = Number(eurRates[toCurrency]) / Number(eurRates[fromCurrency]);
+          return {
+            rate,
+            note: 'Derived via EUR cross-rate',
+          };
+        }
+
+        // d) Unresolvable.
+        return { error: `No FX path found for ${fromCurrency}→${toCurrency}.` };
+      }
+
+      function updateFxRate() {
+        if (!fxData) {
+          runButton.disabled = true;
+          return;
+        }
+
+        const from = txnCurrencyEl.value;
+        const to = settlementCurrencyEl.value;
+        const result = getLookupResult(from, to);
+
+        fxSourceNoteEl.textContent = `Source: ${fxData.meta.source}`;
+        fxAsOfNoteEl.textContent = `As-of: ${fxData.meta.as_of}`;
+
+        if (result.error) {
+          fxRateEl.value = '';
+          fxDerivationNoteEl.textContent = `Rate derivation: ${result.error}`;
+          runButton.disabled = true;
+          errorMessage.textContent = result.error;
+          return;
+        }
+
+        fxRateEl.value = result.rate.toFixed(6);
+        fxDerivationNoteEl.textContent = `Rate derivation: ${result.note}`;
+        runButton.disabled = false;
+
+        if (errorMessage.textContent.startsWith('No FX path found')) {
+          errorMessage.textContent = '';
+        }
+      }
+
+      function populateCurrencyDropdowns() {
+        const currencies = Object.keys(fxData.rates.EUR).sort();
+
+        txnCurrencyEl.innerHTML = '';
+        settlementCurrencyEl.innerHTML = '';
+
+        for (const currency of currencies) {
+          const optionA = document.createElement('option');
+          optionA.value = currency;
+          optionA.textContent = currency;
+          txnCurrencyEl.appendChild(optionA);
+
+          const optionB = document.createElement('option');
+          optionB.value = currency;
+          optionB.textContent = currency;
+          settlementCurrencyEl.appendChild(optionB);
+        }
+
+        txnCurrencyEl.value = currencies.includes('USD') ? 'USD' : currencies[0];
+        settlementCurrencyEl.value = currencies.includes('EUR') ? 'EUR' : currencies[0];
+      }
+
+      async function initializeRates() {
+        try {
+          const response = await fetch('fx_rates.json');
+          if (!response.ok) {
+            throw new Error('Failed to load fx_rates.json');
+          }
+          fxData = await response.json();
+          populateCurrencyDropdowns();
+          updateFxRate();
+        } catch (error) {
+          errorMessage.textContent = 'Unable to load FX rates. Run scripts/update_fx_rates.py and refresh.';
+          fxSourceNoteEl.textContent = 'Source: unavailable';
+          fxAsOfNoteEl.textContent = 'As-of: unavailable';
+          fxDerivationNoteEl.textContent = 'Rate derivation: unavailable';
+          runButton.disabled = true;
+        }
+      }
+
+      txnCurrencyEl.addEventListener('change', updateFxRate);
+      settlementCurrencyEl.addEventListener('change', updateFxRate);
+
+      runButton.addEventListener('click', () => {
+        const amount = Number(amountEl.value);
+        const txnCurrency = txnCurrencyEl.value;
+        const settlementCurrency = settlementCurrencyEl.value;
+        const fxRate = Number(fxRateEl.value);
+        const fxMarkupPct = Number(fxMarkupEl.value);
+
+        // Validation requirements:
+        // - Amount must be > 0
+        // - FX rate must be > 0
+        // - Markup % must be >= 0
+        if (amount <= 0 || fxRate <= 0 || fxMarkupPct < 0) {
+          errorMessage.textContent = 'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
+          return;
+        }
+
+        errorMessage.textContent = '';
+
+        // 1) Converted amount in settlement currency before markup.
+        // Formula: convertedAmount = TxAmt * BaseRate
+        const convertedAmount = amount * fxRate;
+
+        // 2) FX margin retained by settlement provider.
+        // Formula: fxMargin = convertedAmount * (MarkupPct / 100)
+        const fxMargin = convertedAmount * (fxMarkupPct / 100);
+
+        // 3) Merchant net payout after deducting FX margin.
+        // Formula: merchantNetPayout = convertedAmount - fxMargin
+        const merchantNetPayout = convertedAmount - fxMargin;
+
+        const decisionExplanation =
+          `FX conversion ${txnCurrency}→${settlementCurrency} used BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
+          `Resulting FX margin is ${toMoney(fxMargin, settlementCurrency)} and merchant receives net payout of ${toMoney(merchantNetPayout, settlementCurrency)}.`;
+
+        results.innerHTML = `
+          <p><strong>Merchant net payout:</strong> ${toMoney(merchantNetPayout, settlementCurrency)}</p>
+          <p><strong>FX margin earned:</strong> ${toMoney(fxMargin, settlementCurrency)}</p>
+          <p><strong>Decision explanation:</strong> ${decisionExplanation}</p>
+          <h3>Calculation Breakdown</h3>
+          <table aria-label="Calculation Breakdown">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Formula / Definition</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1) Transaction amount (TxAmt)</td>
+                <td>Input transaction amount</td>
+                <td>${toMoney(amount, txnCurrency)}</td>
+              </tr>
+              <tr>
+                <td>2) FX rate (BaseRate)</td>
+                <td>Auto lookup by selected currencies</td>
+                <td>${fxRate.toFixed(6)}</td>
+              </tr>
+              <tr>
+                <td>3) Converted amount</td>
+                <td>TxAmt × BaseRate</td>
+                <td>${toMoney(convertedAmount, settlementCurrency)}</td>
+              </tr>
+              <tr>
+                <td>4) FX markup % (MarkupPct)</td>
+                <td>Input markup percentage</td>
+                <td>${fxMarkupPct.toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <td>5) FX margin</td>
+                <td>Converted amount × (MarkupPct / 100)</td>
+                <td>${toMoney(fxMargin, settlementCurrency)}</td>
+              </tr>
+              <tr>
+                <td>6) Merchant net payout</td>
+                <td>Converted amount - FX margin</td>
+                <td>${toMoney(merchantNetPayout, settlementCurrency)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      });
+
+      initializeRates();
+    </script>
+  </body>
+</html>
