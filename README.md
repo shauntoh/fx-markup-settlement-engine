@@ -1,23 +1,28 @@
 # Agentic Settlement Engine
 
-A simple HTML + JavaScript demo that simulates a settlement agent decision.
+A simple HTML + JavaScript demo that simulates settlement calculations with explicit formulas.
 
 ## What it does
 
-The demo collects:
-- Transaction amount
+The page collects:
+- Transaction amount (TxAmt)
 - Transaction currency
 - Settlement currency
-- FX rate
-- FX markup %
-- Settlement speed (T+1, T+3)
-- Cross-border flag (yes/no)
+- FX rate (BaseRate)
+- FX markup % (MarkupPct)
 
 When you click **Run Settlement Agent**, it will:
 1. Calculate merchant net payout
 2. Calculate FX margin earned
-3. Display settlement timing
-4. Show a short explanation of the decision
+3. Show a **Calculation Breakdown** table with each formula step
+
+## Validation rules
+
+- Amount must be **> 0**
+- FX rate must be **> 0**
+- FX markup % must be **>= 0**
+
+If inputs are invalid, an error message is shown and calculations are not run.
 
 ## Run locally
 
@@ -26,7 +31,7 @@ No build tools are required.
 ### Option 1: Open directly
 1. Open `index.html` in your browser.
 
-### Option 2: Serve with a local web server (recommended)
+### Option 2: Serve with a local web server
 From this repository directory:
 
 ```bash
@@ -37,10 +42,10 @@ Then visit:
 
 - http://localhost:8000
 
-## Notes on calculations
+## Calculation formulas
 
-- `convertedBase = transactionAmount × fxRate`
-- `fxMargin = convertedBase × (fxMarkup% / 100)`
-- `merchantNetPayout = convertedBase - fxMargin`
+1. `Converted amount = TxAmt * BaseRate`
+2. `FX margin = Converted amount * (MarkupPct / 100)`
+3. `Merchant net payout = Converted amount - FX margin`
 
-All results are displayed in the selected settlement currency.
+All monetary outputs are shown in the selected settlement currency (except TxAmt row, which uses transaction currency).
