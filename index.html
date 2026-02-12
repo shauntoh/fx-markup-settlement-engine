@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic Settlement Engine</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        max-width: 860px;
+        line-height: 1.4;
+      }
+      h1 {
+        margin-bottom: 0.5rem;
+      }
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        gap: 0.75rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.92rem;
+        font-weight: 600;
+      }
+      .formula-note {
+        font-size: 0.8rem;
+        color: #555;
+        font-weight: normal;
+        margin-top: 0.2rem;
+      }
+      input,
+      button {
+        margin-top: 0.35rem;
+        padding: 0.45rem;
+        font-size: 1rem;
+      }
+      button {
+        cursor: pointer;
+      }
+      .muted {
+        color: #555;
+        font-size: 0.9rem;
+      }
+      .error {
+        margin-top: 0.75rem;
+        color: #b00020;
+        font-weight: 700;
+      }
+      .results p {
+        margin: 0.4rem 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.75rem;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 0.55rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #f8f8f8;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Agentic Settlement Engine</h1>
+    <p class="muted">Simple settlement calculator with explicit formulas for finance and engineering review.</p>
+
+    <div class="card">
+      <div class="grid">
+        <label>
+          Transaction amount (TxAmt)
+          <input id="amount" type="number" min="0" step="0.01" value="1000" />
+          <span class="formula-note">Input amount in transaction currency.</span>
+        </label>
+
+        <label>
+          Transaction currency
+          <input id="txnCurrency" type="text" value="USD" maxlength="3" />
+        </label>
+
+        <label>
+          Settlement currency
+          <input id="settlementCurrency" type="text" value="EUR" maxlength="3" />
+        </label>
+
+        <label>
+          FX rate (BaseRate)
+          <input id="fxRate" type="number" min="0" step="0.0001" value="0.92" />
+          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
+        </label>
+
+        <label>
+          FX markup % (MarkupPct)
+          <input id="fxMarkup" type="number" min="0" step="0.01" value="1.25" />
+          <span class="formula-note">FX margin = Converted amount × (MarkupPct / 100)</span>
+        </label>
+      </div>
+
+      <button id="runButton" type="button" style="margin-top: 1rem">Run Settlement Agent</button>
+      <div id="errorMessage" class="error" aria-live="polite"></div>
+    </div>
+
+    <div class="card results" id="results" aria-live="polite">
+      <p><strong>Merchant net payout:</strong> -</p>
+      <p><strong>FX margin earned:</strong> -</p>
+      <p><strong>Decision explanation:</strong> -</p>
+      <div id="breakdown"></div>
+    </div>
+
+    <script>
+      const amountEl = document.getElementById('amount');
+      const txnCurrencyEl = document.getElementById('txnCurrency');
+      const settlementCurrencyEl = document.getElementById('settlementCurrency');
+      const fxRateEl = document.getElementById('fxRate');
+      const fxMarkupEl = document.getElementById('fxMarkup');
+      const runButton = document.getElementById('runButton');
+      const results = document.getElementById('results');
+      const errorMessage = document.getElementById('errorMessage');
+
+      function toMoney(value, currency) {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(value);
+      }
+
+      runButton.addEventListener('click', () => {
+        const amount = Number(amountEl.value);
+        const txnCurrency = txnCurrencyEl.value.toUpperCase();
+        const settlementCurrency = settlementCurrencyEl.value.toUpperCase();
+        const fxRate = Number(fxRateEl.value);
+        const fxMarkupPct = Number(fxMarkupEl.value);
+
+        // Validation requirements:
+        // - Amount must be > 0
+        // - FX rate must be > 0
+        // - Markup % must be >= 0
+        if (amount <= 0 || fxRate <= 0 || fxMarkupPct < 0) {
+          errorMessage.textContent = 'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
+          return;
+        }
+
+        errorMessage.textContent = '';
+
+        // 1) Converted amount in settlement currency before markup.
+        // Formula: convertedAmount = TxAmt * BaseRate
+        const convertedAmount = amount * fxRate;
+
+        // 2) FX margin retained by settlement provider.
+        // Formula: fxMargin = convertedAmount * (MarkupPct / 100)
+        const fxMargin = convertedAmount * (fxMarkupPct / 100);
+
+        // 3) Merchant net payout after deducting FX margin.
+        // Formula: merchantNetPayout = convertedAmount - fxMargin
+        const merchantNetPayout = convertedAmount - fxMargin;
+
+        const decisionExplanation =
+          `Settlement agent applied FX conversion using BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
+          `Resulting FX margin is ${toMoney(fxMargin, settlementCurrency)} and merchant receives net payout of ${toMoney(merchantNetPayout, settlementCurrency)}.`;
+
+        results.innerHTML = `
+          <p><strong>Merchant net payout:</strong> ${toMoney(merchantNetPayout, settlementCurrency)}</p>
+          <p><strong>FX margin earned:</strong> ${toMoney(fxMargin, settlementCurrency)}</p>
+          <p><strong>Decision explanation:</strong> ${decisionExplanation}</p>
+          <h3>Calculation Breakdown</h3>
+          <table aria-label="Calculation Breakdown">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Formula / Definition</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1) Transaction amount (TxAmt)</td>
+                <td>Input transaction amount</td>
+                <td>${toMoney(amount, txnCurrency)}</td>
+              </tr>
+              <tr>
+                <td>2) FX rate (BaseRate)</td>
+                <td>Input FX conversion rate</td>
+                <td>${fxRate.toFixed(6)}</td>
+              </tr>
+              <tr>
+                <td>3) Converted amount</td>
+                <td>TxAmt × BaseRate</td>
+                <td>${toMoney(convertedAmount, settlementCurrency)}</td>
+              </tr>
+              <tr>
+                <td>4) FX markup % (MarkupPct)</td>
+                <td>Input markup percentage</td>
+                <td>${fxMarkupPct.toFixed(2)}%</td>
+              </tr>
+              <tr>
+                <td>5) FX margin</td>
+                <td>Converted amount × (MarkupPct / 100)</td>
+                <td>${toMoney(fxMargin, settlementCurrency)}</td>
+              </tr>
+              <tr>
+                <td>6) Merchant net payout</td>
+                <td>Converted amount - FX margin</td>
+                <td>${toMoney(merchantNetPayout, settlementCurrency)}</td>
+              </tr>
+            </tbody>
+          </table>
+        `;
+      });
+    </script>
+  </body>
+</html>
