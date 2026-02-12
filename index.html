@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<<<<<<< codex/explain-repository-and-suggest-features
     <title>FX Markup Simulator</title>
+=======
+    <title>Agentic Settlement Engine</title>
+>>>>>>> main
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -38,15 +42,21 @@
         margin-top: 0.2rem;
       }
       input,
+<<<<<<< codex/explain-repository-and-suggest-features
       select,
+=======
+>>>>>>> main
       button {
         margin-top: 0.35rem;
         padding: 0.45rem;
         font-size: 1rem;
       }
+<<<<<<< codex/explain-repository-and-suggest-features
       input[readonly] {
         background: #f6f6f6;
       }
+=======
+>>>>>>> main
       button {
         cursor: pointer;
       }
@@ -80,8 +90,13 @@
     </style>
   </head>
   <body>
+<<<<<<< codex/explain-repository-and-suggest-features
     <h1>FX Markup Simulator</h1>
     <p class="muted">Simple FX markup calculator with explicit formulas and automatic rate lookup.</p>
+=======
+    <h1>Agentic Settlement Engine</h1>
+    <p class="muted">Simple settlement calculator with explicit formulas for finance and engineering review.</p>
+>>>>>>> main
 
     <div class="card">
       <div class="grid">
@@ -93,21 +108,34 @@
 
         <label>
           Transaction currency
+<<<<<<< codex/explain-repository-and-suggest-features
           <select id="txnCurrency"></select>
+=======
+          <input id="txnCurrency" type="text" value="USD" maxlength="3" />
+>>>>>>> main
         </label>
 
         <label>
           Settlement currency
+<<<<<<< codex/explain-repository-and-suggest-features
           <select id="settlementCurrency"></select>
+=======
+          <input id="settlementCurrency" type="text" value="EUR" maxlength="3" />
+>>>>>>> main
         </label>
 
         <label>
           FX rate (BaseRate)
+<<<<<<< codex/explain-repository-and-suggest-features
           <input id="fxRate" type="number" readonly />
           <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
           <span id="fxSourceNote" class="formula-note">Source: -</span>
           <span id="fxAsOfNote" class="formula-note">As-of: -</span>
           <span id="fxDerivationNote" class="formula-note">Rate derivation: -</span>
+=======
+          <input id="fxRate" type="number" min="0" step="0.0001" value="0.92" />
+          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
+>>>>>>> main
         </label>
 
         <label>
@@ -134,15 +162,21 @@
       const settlementCurrencyEl = document.getElementById('settlementCurrency');
       const fxRateEl = document.getElementById('fxRate');
       const fxMarkupEl = document.getElementById('fxMarkup');
+<<<<<<< codex/explain-repository-and-suggest-features
       const fxSourceNoteEl = document.getElementById('fxSourceNote');
       const fxAsOfNoteEl = document.getElementById('fxAsOfNote');
       const fxDerivationNoteEl = document.getElementById('fxDerivationNote');
+=======
+>>>>>>> main
       const runButton = document.getElementById('runButton');
       const results = document.getElementById('results');
       const errorMessage = document.getElementById('errorMessage');
 
+<<<<<<< codex/explain-repository-and-suggest-features
       let fxData = null;
 
+=======
+>>>>>>> main
       function toMoney(value, currency) {
         return new Intl.NumberFormat('en-US', {
           style: 'currency',
@@ -152,6 +186,7 @@
         }).format(value);
       }
 
+<<<<<<< codex/explain-repository-and-suggest-features
       function getLookupResult(fromCurrency, toCurrency) {
         const rates = fxData?.rates || {};
         const eurRates = rates.EUR || {};
@@ -268,6 +303,12 @@
         const amount = Number(amountEl.value);
         const txnCurrency = txnCurrencyEl.value;
         const settlementCurrency = settlementCurrencyEl.value;
+=======
+      runButton.addEventListener('click', () => {
+        const amount = Number(amountEl.value);
+        const txnCurrency = txnCurrencyEl.value.toUpperCase();
+        const settlementCurrency = settlementCurrencyEl.value.toUpperCase();
+>>>>>>> main
         const fxRate = Number(fxRateEl.value);
         const fxMarkupPct = Number(fxMarkupEl.value);
 
@@ -295,7 +336,11 @@
         const merchantNetPayout = convertedAmount - fxMargin;
 
         const decisionExplanation =
+<<<<<<< codex/explain-repository-and-suggest-features
           `FX conversion ${txnCurrency}→${settlementCurrency} used BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
+=======
+          `Settlement agent applied FX conversion using BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
+>>>>>>> main
           `Resulting FX margin is ${toMoney(fxMargin, settlementCurrency)} and merchant receives net payout of ${toMoney(merchantNetPayout, settlementCurrency)}.`;
 
         results.innerHTML = `
@@ -319,7 +364,11 @@
               </tr>
               <tr>
                 <td>2) FX rate (BaseRate)</td>
+<<<<<<< codex/explain-repository-and-suggest-features
                 <td>Auto lookup by selected currencies</td>
+=======
+                <td>Input FX conversion rate</td>
+>>>>>>> main
                 <td>${fxRate.toFixed(6)}</td>
               </tr>
               <tr>
@@ -346,8 +395,11 @@
           </table>
         `;
       });
+<<<<<<< codex/explain-repository-and-suggest-features
 
       initializeRates();
+=======
+>>>>>>> main
     </script>
   </body>
 </html>

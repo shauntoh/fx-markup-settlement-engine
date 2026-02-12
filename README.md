@@ -1,19 +1,32 @@
+<<<<<<< codex/explain-repository-and-suggest-features
 # FX Markup Simulator
 
 A plain HTML + JavaScript demo that simulates FX markup outcomes with automatic FX rate lookup from locally stored ECB reference data.
+=======
+# Agentic Settlement Engine
+
+A simple HTML + JavaScript demo that simulates settlement calculations with explicit formulas.
+>>>>>>> main
 
 ## What it does
 
 The page collects:
 - Transaction amount (TxAmt)
+<<<<<<< codex/explain-repository-and-suggest-features
 - Transaction currency (dropdown)
 - Settlement currency (dropdown)
 - FX rate (BaseRate, auto-filled and read-only)
+=======
+- Transaction currency
+- Settlement currency
+- FX rate (BaseRate)
+>>>>>>> main
 - FX markup % (MarkupPct)
 
 When you click **Run Settlement Agent**, it will:
 1. Calculate merchant net payout
 2. Calculate FX margin earned
+<<<<<<< codex/explain-repository-and-suggest-features
 3. Show a decision explanation
 4. Show a **Calculation Breakdown** table with each formula step
 
@@ -31,6 +44,9 @@ Lookup logic:
 2. Else derive by inversion if reverse rate exists
 3. Else derive by EUR cross-rate: `A→B = (EUR→B) / (EUR→A)`
 4. Else show an error and disable the run button
+=======
+3. Show a **Calculation Breakdown** table with each formula step
+>>>>>>> main
 
 ## Validation rules
 
@@ -42,6 +58,7 @@ If inputs are invalid, an error message is shown and calculations are not run.
 
 ## Run locally
 
+<<<<<<< codex/explain-repository-and-suggest-features
 1. Update rates:
 
 ```bash
@@ -49,11 +66,21 @@ python3 scripts/update_fx_rates.py
 ```
 
 2. Start a local server:
+=======
+No build tools are required.
+
+### Option 1: Open directly
+1. Open `index.html` in your browser.
+
+### Option 2: Serve with a local web server
+From this repository directory:
+>>>>>>> main
 
 ```bash
 python3 -m http.server 8000
 ```
 
+<<<<<<< codex/explain-repository-and-suggest-features
 3. Open:
 
 - http://localhost:8000
@@ -63,3 +90,16 @@ python3 -m http.server 8000
 A daily workflow at `.github/workflows/update-fx.yml` refreshes `fx_rates.json` and commits changes to `main` with message:
 
 - `chore: update fx rates`
+=======
+Then visit:
+
+- http://localhost:8000
+
+## Calculation formulas
+
+1. `Converted amount = TxAmt * BaseRate`
+2. `FX margin = Converted amount * (MarkupPct / 100)`
+3. `Merchant net payout = Converted amount - FX margin`
+
+All monetary outputs are shown in the selected settlement currency (except TxAmt row, which uses transaction currency).
+>>>>>>> main
