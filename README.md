@@ -12,7 +12,7 @@ The page collects:
 - Transaction currency (all currencies in `fx_rates.json`, including EUR)
 - Settlement currency (restricted to `USD, EUR, SGD, JPY, PHP, IDR, MYR, THB`)
 - FX rate (AdjustedRate, read-only)
-- Reference rate adjustment % (AdjPct, default `9`)
+- Reference rate adjustment % (AdjPct, default `8`)
 - FX markup % (MarkupPct)
 
 When you click **Run Settlement Agent**, it will:

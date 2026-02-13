@@ -107,7 +107,7 @@
 
         <label>
           Reference rate adjustment (%)
-          <input id="refAdjustment" type="number" min="0" step="0.01" value="9" />
+          <input id="refAdjustment" type="number" min="0" step="0.01" value="8" />
           <span class="formula-note"
             >Adjusts the displayed base FX reference rate for comparison purposes. This does NOT replace the settlement
             markup logic.</span
@@ -291,7 +291,7 @@
 
         settlementAvailabilityNoteEl.textContent =
           missingSettlementCurrencies.length > 0
-            ? `Not available in current rates file: ${missingSettlementCurrencies.join(', ')}`
+            ? `Not available in current rates file.`
             : '';
 
         txnCurrencyEl.value = availableCurrencies.includes('USD') ? 'USD' : availableCurrencies[0];
