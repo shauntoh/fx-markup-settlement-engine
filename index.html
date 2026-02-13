@@ -8,11 +8,8 @@
       body {
         font-family: Arial, sans-serif;
         margin: 2rem;
-        max-width: 860px;
+        max-width: 900px;
         line-height: 1.4;
-      }
-      h1 {
-        margin-bottom: 0.5rem;
       }
       .card {
         border: 1px solid #ddd;
@@ -22,7 +19,7 @@
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(220px, 1fr));
+        grid-template-columns: repeat(2, minmax(240px, 1fr));
         gap: 0.75rem;
       }
       label {
@@ -32,10 +29,15 @@
         font-weight: 600;
       }
       .formula-note {
-        font-size: 0.8rem;
+        font-size: 0.82rem;
         color: #555;
         font-weight: normal;
         margin-top: 0.2rem;
+      }
+      .warning-note {
+        color: #7a5200;
+        font-size: 0.82rem;
+        margin-top: 0.5rem;
       }
       input,
       select,
@@ -46,13 +48,6 @@
       }
       input[readonly] {
         background: #f6f6f6;
-      }
-      button {
-        cursor: pointer;
-      }
-      .muted {
-        color: #555;
-        font-size: 0.9rem;
       }
       .error {
         margin-top: 0.75rem;
@@ -79,10 +74,9 @@
       }
     </style>
   </head>
-
   <body>
     <h1>FX Markup Simulator</h1>
-    <p class="muted">Simple FX markup calculator with explicit formulas and automatic rate lookup.</p>
+    <p class="formula-note">Uses local ECB rates and deterministic formulas. No browser-side external API calls.</p>
 
     <div class="card">
       <div class="grid">
@@ -103,12 +97,21 @@
         </label>
 
         <label>
-          FX rate (BaseRate)
+          FX rate (AdjustedRate)
           <input id="fxRate" type="number" readonly />
-          <span class="formula-note">Converted amount = TxAmt × BaseRate</span>
+          <span class="formula-note">AdjustedRate = BaseRate × (1 - AdjPct / 100)</span>
           <span id="fxSourceNote" class="formula-note">Source: -</span>
           <span id="fxAsOfNote" class="formula-note">As-of: -</span>
-          <span id="fxDerivationNote" class="formula-note">Rate derivation: -</span>
+          <span id="fxDerivationNote" class="formula-note">Derivation: -</span>
+        </label>
+
+        <label>
+          Reference rate adjustment (%)
+          <input id="refAdjustment" type="number" min="0" step="0.01" value="9" />
+          <span class="formula-note"
+            >Adjusts the displayed base FX reference rate for comparison purposes. This does NOT replace the settlement
+            markup logic.</span
+          >
         </label>
 
         <label>
@@ -118,6 +121,7 @@
         </label>
       </div>
 
+      <div id="settlementAvailabilityNote" class="warning-note"></div>
       <button id="runButton" type="button" style="margin-top: 1rem">Run Settlement Agent</button>
       <div id="errorMessage" class="error" aria-live="polite"></div>
     </div>
@@ -130,19 +134,24 @@
     </div>
 
     <script>
+      const SETTLEMENT_ALLOWED = ['USD', 'EUR', 'SGD', 'JPY', 'PHP', 'IDR', 'MYR', 'THB'];
+
       const amountEl = document.getElementById('amount');
       const txnCurrencyEl = document.getElementById('txnCurrency');
       const settlementCurrencyEl = document.getElementById('settlementCurrency');
       const fxRateEl = document.getElementById('fxRate');
+      const refAdjustmentEl = document.getElementById('refAdjustment');
       const fxMarkupEl = document.getElementById('fxMarkup');
       const fxSourceNoteEl = document.getElementById('fxSourceNote');
       const fxAsOfNoteEl = document.getElementById('fxAsOfNote');
       const fxDerivationNoteEl = document.getElementById('fxDerivationNote');
+      const settlementAvailabilityNoteEl = document.getElementById('settlementAvailabilityNote');
       const runButton = document.getElementById('runButton');
       const results = document.getElementById('results');
       const errorMessage = document.getElementById('errorMessage');
 
       let fxData = null;
+      let currentLookup = null;
 
       function toMoney(value, currency) {
         return new Intl.NumberFormat('en-US', {
@@ -153,50 +162,60 @@
         }).format(value);
       }
 
-      /**
-       * Supports:
-       * a) Direct A->B if present
-       * b) Inversion if reverse present: 1/(B->A)
-       * c) EUR cross-rate: A->B = (EUR->B) / (EUR->A) when both exist under EUR base
-       */
+      function getAvailableCurrencies() {
+        const eurRates = fxData?.rates?.EUR || {};
+        return Array.from(new Set(['EUR', ...Object.keys(eurRates)])).sort();
+      }
+
       function getLookupResult(fromCurrency, toCurrency) {
         const rates = fxData?.rates || {};
         const eurRates = rates.EUR || {};
 
-        if (!fromCurrency || !toCurrency) return { error: 'Please select both currencies.' };
-        if (fromCurrency === toCurrency) return { rate: 1, note: 'Direct rate (same currency)' };
-
-        // a) Direct
-        if (rates[fromCurrency] && rates[fromCurrency][toCurrency]) {
-          return {
-            rate: Number(rates[fromCurrency][toCurrency]),
-            note: `Direct rate: ${fromCurrency}→${toCurrency}`,
-          };
+        if (!fromCurrency || !toCurrency) {
+          return { error: 'Please select both currencies.' };
         }
 
-        // b) Invert
+        if (fromCurrency === toCurrency) {
+          return { baseRate: 1, method: 'Direct' };
+        }
+
+        // a) Direct rate.
+        if (rates[fromCurrency] && rates[fromCurrency][toCurrency]) {
+          return { baseRate: Number(rates[fromCurrency][toCurrency]), method: 'Direct' };
+        }
+
+        // b) Inversion from reverse pair.
         if (rates[toCurrency] && rates[toCurrency][fromCurrency]) {
           const reverseRate = Number(rates[toCurrency][fromCurrency]);
           return {
-            rate: 1 / reverseRate,
-            note: `Derived via inversion from ${toCurrency}→${fromCurrency}`,
+            baseRate: 1 / reverseRate,
+            method: `Inversion from ${toCurrency}→${fromCurrency}`,
           };
         }
 
-        // c) EUR cross-rate: A->B = (EUR->B) / (EUR->A)
+        // c) EUR cross-rate: A→B = (EUR→B) / (EUR→A)
         if (eurRates[fromCurrency] && eurRates[toCurrency]) {
-          const rate = Number(eurRates[toCurrency]) / Number(eurRates[fromCurrency]);
-          return { rate, note: 'Derived via EUR cross-rate' };
+          return {
+            baseRate: Number(eurRates[toCurrency]) / Number(eurRates[fromCurrency]),
+            method: 'EUR cross',
+          };
         }
 
+        // d) Not resolvable.
         return { error: `No FX path found for ${fromCurrency}→${toCurrency}.` };
       }
 
-      function setFxMetaUI() {
-        const src = fxData?.meta?.source ?? 'unavailable';
-        const asOf = fxData?.meta?.as_of ?? 'unavailable';
-        fxSourceNoteEl.textContent = `Source: ${src}`;
-        fxAsOfNoteEl.textContent = `As-of: ${asOf}`;
+      function isSettlementAllowed(currency) {
+        return SETTLEMENT_ALLOWED.includes(currency);
+      }
+
+      function coerceSettlementCurrency() {
+        if (isSettlementAllowed(settlementCurrencyEl.value)) {
+          return;
+        }
+
+        const firstEnabledSettlement = Array.from(settlementCurrencyEl.options).find((opt) => !opt.disabled);
+        settlementCurrencyEl.value = firstEnabledSettlement ? firstEnabledSettlement.value : '';
       }
 
       function updateFxRate() {
@@ -205,104 +224,155 @@
           return;
         }
 
-        setFxMetaUI();
+        coerceSettlementCurrency();
 
         const from = txnCurrencyEl.value;
         const to = settlementCurrencyEl.value;
-        const result = getLookupResult(from, to);
+        const adjustmentPct = Number(refAdjustmentEl.value);
 
-        if (result.error) {
-          fxRateEl.value = '';
-          fxDerivationNoteEl.textContent = `Rate derivation: ${result.error}`;
-          errorMessage.textContent = result.error;
+        if (adjustmentPct < 0) {
+          errorMessage.textContent = 'Reference rate adjustment must be 0 or more.';
           runButton.disabled = true;
           return;
         }
 
-        fxRateEl.value = result.rate.toFixed(6);
-        fxDerivationNoteEl.textContent = `Rate derivation: ${result.note}`;
-        errorMessage.textContent = '';
+        const lookup = getLookupResult(from, to);
+        currentLookup = lookup;
+
+        fxSourceNoteEl.textContent = `Source: ${fxData.meta.source}`;
+        fxAsOfNoteEl.textContent = `As-of: ${fxData.meta.as_of}`;
+
+        if (lookup.error) {
+          fxRateEl.value = '';
+          fxDerivationNoteEl.textContent = `Derivation: ${lookup.error}`;
+          errorMessage.textContent = lookup.error;
+          runButton.disabled = true;
+          return;
+        }
+
+        // New feature: reference rate adjustment applied before settlement markup.
+        // adjustedRate = baseRate * (1 - adjPct/100)
+        const adjustedRate = lookup.baseRate * (1 - adjustmentPct / 100);
+
+        fxRateEl.value = adjustedRate.toFixed(6);
+        fxDerivationNoteEl.textContent = `Derivation: ${lookup.method}`;
         runButton.disabled = false;
+        if (errorMessage.textContent.startsWith('No FX path found') || errorMessage.textContent.startsWith('Reference rate adjustment')) {
+          errorMessage.textContent = '';
+        }
       }
 
       function populateCurrencyDropdowns() {
-        const eur = fxData?.rates?.EUR || {};
-        const currencies = Object.keys(eur).sort();
+        const availableCurrencies = getAvailableCurrencies();
 
         txnCurrencyEl.innerHTML = '';
         settlementCurrencyEl.innerHTML = '';
 
-        for (const ccy of currencies) {
-          const optA = document.createElement('option');
-          optA.value = ccy;
-          optA.textContent = ccy;
-          txnCurrencyEl.appendChild(optA);
-
-          const optB = document.createElement('option');
-          optB.value = ccy;
-          optB.textContent = ccy;
-          settlementCurrencyEl.appendChild(optB);
+        // Transaction currency: all currencies found in fx_rates.json including EUR.
+        for (const currency of availableCurrencies) {
+          const option = document.createElement('option');
+          option.value = currency;
+          option.textContent = currency;
+          txnCurrencyEl.appendChild(option);
         }
 
-        txnCurrencyEl.value = currencies.includes('USD') ? 'USD' : currencies[0] || 'EUR';
-        settlementCurrencyEl.value = currencies.includes('EUR') ? 'EUR' : currencies[0] || 'EUR';
+        // Settlement currency: restricted list, disable those not present.
+        const missingSettlementCurrencies = [];
+        for (const currency of SETTLEMENT_ALLOWED) {
+          const option = document.createElement('option');
+          option.value = currency;
+          option.textContent = availableCurrencies.includes(currency) ? currency : `${currency} (not available)`;
+          if (!availableCurrencies.includes(currency)) {
+            option.disabled = true;
+            missingSettlementCurrencies.push(currency);
+          }
+          settlementCurrencyEl.appendChild(option);
+        }
+
+        settlementAvailabilityNoteEl.textContent =
+          missingSettlementCurrencies.length > 0
+            ? `Not available in current rates file: ${missingSettlementCurrencies.join(', ')}`
+            : '';
+
+        txnCurrencyEl.value = availableCurrencies.includes('USD') ? 'USD' : availableCurrencies[0];
+        const firstEnabledSettlement = Array.from(settlementCurrencyEl.options).find((opt) => !opt.disabled);
+        settlementCurrencyEl.value = firstEnabledSettlement ? firstEnabledSettlement.value : '';
+
+        coerceSettlementCurrency();
       }
 
       async function initializeRates() {
         try {
-          const response = await fetch('fx_rates.json', { cache: 'no-store' });
-          if (!response.ok) throw new Error('Failed to load fx_rates.json');
+          const response = await fetch('fx_rates.json');
+          if (!response.ok) {
+            throw new Error('Failed to load fx_rates.json');
+          }
           fxData = await response.json();
-
-          // Defensive: ensure EUR exists and EUR->EUR exists
-          fxData.rates = fxData.rates || {};
-          fxData.rates.EUR = fxData.rates.EUR || {};
-          fxData.rates.EUR.EUR = 1;
-
           populateCurrencyDropdowns();
           updateFxRate();
-        } catch (err) {
-          fxData = null;
-          errorMessage.textContent =
-            'Unable to load FX rates (fx_rates.json). Please ensure it exists in the repo root and refresh.';
-          fxRateEl.value = '';
+        } catch (error) {
+          errorMessage.textContent = 'Unable to load FX rates. Run scripts/update_fx_rates.py and refresh.';
           fxSourceNoteEl.textContent = 'Source: unavailable';
           fxAsOfNoteEl.textContent = 'As-of: unavailable';
-          fxDerivationNoteEl.textContent = 'Rate derivation: unavailable';
+          fxDerivationNoteEl.textContent = 'Derivation: unavailable';
           runButton.disabled = true;
         }
       }
 
       txnCurrencyEl.addEventListener('change', updateFxRate);
       settlementCurrencyEl.addEventListener('change', updateFxRate);
+      refAdjustmentEl.addEventListener('input', updateFxRate);
 
       runButton.addEventListener('click', () => {
         const amount = Number(amountEl.value);
         const txnCurrency = txnCurrencyEl.value;
         const settlementCurrency = settlementCurrencyEl.value;
-        const fxRate = Number(fxRateEl.value);
+        const adjustmentPct = Number(refAdjustmentEl.value);
         const fxMarkupPct = Number(fxMarkupEl.value);
 
-        if (amount <= 0 || fxRate <= 0 || fxMarkupPct < 0) {
-          errorMessage.textContent =
-            'Invalid input: Amount and FX rate must be greater than 0, and FX markup % must be 0 or more.';
+        if (!isSettlementAllowed(settlementCurrency)) {
+          errorMessage.textContent = 'Settlement currency must be one of: USD, EUR, SGD, JPY, PHP, IDR, MYR, THB.';
+          runButton.disabled = true;
           return;
         }
+
+        if (!currentLookup || currentLookup.error) {
+          errorMessage.textContent = 'No valid FX rate available for selected currencies.';
+          return;
+        }
+
+        const baseRate = Number(currentLookup.baseRate);
+
+        // Reference adjustment applied first.
+        const adjustedRate = baseRate * (1 - adjustmentPct / 100);
+
+        // Validation requirements retained and expanded with adjustment input.
+        if (amount <= 0 || adjustedRate <= 0 || fxMarkupPct < 0 || adjustmentPct < 0) {
+          errorMessage.textContent =
+            'Invalid input: Amount and adjusted FX rate must be greater than 0; FX markup % and reference rate adjustment % must be 0 or more.';
+          return;
+        }
+
         errorMessage.textContent = '';
 
-        const convertedAmount = amount * fxRate;
+        // Settlement calculations use adjusted rate.
+        // convertedAmount = TxAmt * AdjustedRate
+        const convertedAmount = amount * adjustedRate;
+
+        // fxMargin = convertedAmount * (MarkupPct / 100)
         const fxMargin = convertedAmount * (fxMarkupPct / 100);
+
+        // merchantNetPayout = convertedAmount - fxMargin
         const merchantNetPayout = convertedAmount - fxMargin;
 
         const decisionExplanation =
-          `FX conversion ${txnCurrency}→${settlementCurrency} used BaseRate ${fxRate.toFixed(6)} and MarkupPct ${fxMarkupPct.toFixed(2)}%. ` +
-          `Resulting FX margin is ${toMoney(fxMargin, settlementCurrency)} and merchant receives net payout of ${toMoney(merchantNetPayout, settlementCurrency)}.`;
+          `BaseRate ${baseRate.toFixed(6)} (${currentLookup.method}) adjusted by ${adjustmentPct.toFixed(2)}% gives AdjustedRate ${adjustedRate.toFixed(6)}. ` +
+          `Settlement markup ${fxMarkupPct.toFixed(2)}% yields FX margin ${toMoney(fxMargin, settlementCurrency)} and merchant payout ${toMoney(merchantNetPayout, settlementCurrency)}.`;
 
         results.innerHTML = `
           <p><strong>Merchant net payout:</strong> ${toMoney(merchantNetPayout, settlementCurrency)}</p>
           <p><strong>FX margin earned:</strong> ${toMoney(fxMargin, settlementCurrency)}</p>
           <p><strong>Decision explanation:</strong> ${decisionExplanation}</p>
-
           <h3>Calculation Breakdown</h3>
           <table aria-label="Calculation Breakdown">
             <thead>
@@ -319,27 +389,42 @@
                 <td>${toMoney(amount, txnCurrency)}</td>
               </tr>
               <tr>
-                <td>2) FX rate (BaseRate)</td>
-                <td>Auto lookup by selected currencies</td>
-                <td>${fxRate.toFixed(6)}</td>
+                <td>2) Base rate metadata</td>
+                <td>Source + as-of date from rates file</td>
+                <td>${fxData.meta.source} | ${fxData.meta.as_of}</td>
               </tr>
               <tr>
-                <td>3) Converted amount</td>
-                <td>TxAmt × BaseRate</td>
+                <td>3) Derivation method</td>
+                <td>Direct / Inversion / EUR cross</td>
+                <td>${currentLookup.method}</td>
+              </tr>
+              <tr>
+                <td>4) Base rate (BaseRate)</td>
+                <td>Lookup result before adjustment</td>
+                <td>${baseRate.toFixed(6)}</td>
+              </tr>
+              <tr>
+                <td>5) Reference adjustment</td>
+                <td>AdjustedRate = BaseRate × (1 - AdjPct / 100)</td>
+                <td>${baseRate.toFixed(6)} × (1 - ${adjustmentPct.toFixed(2)} / 100) = ${adjustedRate.toFixed(6)}</td>
+              </tr>
+              <tr>
+                <td>6) Converted amount</td>
+                <td>TxAmt × AdjustedRate</td>
                 <td>${toMoney(convertedAmount, settlementCurrency)}</td>
               </tr>
               <tr>
-                <td>4) FX markup % (MarkupPct)</td>
-                <td>Input markup percentage</td>
+                <td>7) FX markup % (MarkupPct)</td>
+                <td>Input settlement markup</td>
                 <td>${fxMarkupPct.toFixed(2)}%</td>
               </tr>
               <tr>
-                <td>5) FX margin</td>
+                <td>8) FX margin</td>
                 <td>Converted amount × (MarkupPct / 100)</td>
                 <td>${toMoney(fxMargin, settlementCurrency)}</td>
               </tr>
               <tr>
-                <td>6) Merchant net payout</td>
+                <td>9) Merchant net payout</td>
                 <td>Converted amount - FX margin</td>
                 <td>${toMoney(merchantNetPayout, settlementCurrency)}</td>
               </tr>
